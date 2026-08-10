@@ -19,16 +19,16 @@ export function TablePreview({
   const truncated = totalRowCount > visibleRows.length;
 
   return (
-    <div>
-      <div className="max-h-96 overflow-auto rounded-lg border border-border">
-        <table className="w-full min-w-max border-collapse text-left text-sm">
-          <thead className="sticky top-0 bg-background">
+    <div className="flex h-full flex-col">
+      <div className="flex-1 overflow-auto">
+        <table className="w-full min-w-max border-collapse text-left text-[13px]">
+          <thead className="sticky top-0 z-10 bg-[#FAFAF8]">
             <tr>
-              <th className="border-b border-border px-3 py-2 text-xs font-medium text-secondary">#</th>
+              <th className="border-b border-border-soft px-3 py-2 text-[11px] font-medium text-secondary">#</th>
               {headers.map((header) => (
                 <th
                   key={header}
-                  className="border-b border-border px-3 py-2 font-medium text-foreground whitespace-nowrap"
+                  className="border-b border-border-soft px-3 py-2 font-mono font-medium whitespace-nowrap text-foreground"
                 >
                   {header}
                 </th>
@@ -37,12 +37,16 @@ export function TablePreview({
           </thead>
           <tbody>
             {visibleRows.map((row, i) => (
-              <tr key={i} className="border-b border-border last:border-0 hover:bg-background/60">
-                <td className="px-3 py-2 text-xs text-secondary">{i + 1}</td>
+              <tr key={i} className="border-b border-border-soft last:border-0 hover:bg-background/70">
+                <td className="px-3 py-1.5 text-[11px] text-secondary">{i + 1}</td>
                 {headers.map((header) => {
                   const value = row[header] ?? "";
                   return (
-                    <td key={header} className="px-3 py-2 text-foreground whitespace-nowrap" title={value}>
+                    <td
+                      key={header}
+                      className="whitespace-nowrap px-3 py-1.5 font-mono text-foreground"
+                      title={value}
+                    >
                       {truncateCell(value)}
                     </td>
                   );
@@ -53,7 +57,7 @@ export function TablePreview({
         </table>
       </div>
       {truncated && (
-        <p className="mt-2 text-xs text-secondary">
+        <p className="border-t border-border-soft px-3 py-1.5 text-[11px] text-secondary">
           Previewing first {visibleRows.length} of {totalRowCount.toLocaleString("en-US")} rows
         </p>
       )}

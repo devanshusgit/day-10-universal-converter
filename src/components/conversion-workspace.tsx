@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { RotateCcw } from "lucide-react";
+import { AlertTriangle, Check, Copy, Download, Lock, RotateCcw } from "lucide-react";
 import {
   CONVERSION_MATRIX,
   ConversionError,
@@ -13,12 +13,13 @@ import {
 } from "@/types/converter";
 import { detectFormat } from "@/lib/detect-format";
 import { buildFileSummary, convert, ParsedSource, parseSourceContent } from "@/lib/converter";
+import { formatBytes } from "@/lib/format";
+import { downloadTextFile } from "@/lib/download";
 import { FileDropzone } from "@/components/file-dropzone";
-import { FileSummaryCard } from "@/components/file-summary";
 import { TransformControl } from "@/components/transform-control";
 import { OriginalPreview } from "@/components/original-preview";
 import { ConvertedPreview } from "@/components/converted-preview";
-import { ErrorBanner, WarningBanner } from "@/components/error-banner";
+import { ErrorBlock, WarningBanner } from "@/components/error-banner";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
@@ -34,6 +35,7 @@ type ReadyState = {
   warnings: string[];
   targetFormat: FileFormat | null;
   converting: boolean;
+  pulseKey: number;
   result: ConversionResult | null;
   editedContent: string;
   conversionError: ConversionError | null;
@@ -57,6 +59,14 @@ function nextFrame(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
+function resultSummaryLabel(data: ParsedSource): string {
+  if (data.format === "csv") return `${data.table.rowCount.toLocaleString("en-US")} rows converted`;
+  if (data.format === "json" && (data.kind === "array-of-objects" || data.kind === "array")) {
+    return `${(data.value as unknown[]).length.toLocaleString("en-US")} records converted`;
+  }
+  return "Converted";
+}
+
 function MismatchBanner({
   filename,
   detected,
@@ -69,38 +79,56 @@ function MismatchBanner({
   onPick: (format: FileFormat) => void;
 }) {
   return (
-    <div role="status" className="rounded-xl border border-border bg-accent-soft p-4 text-sm">
-      <p className="font-semibold text-accent-hover">FORMAT MISMATCH</p>
-      <p className="mt-1 text-accent-hover/90">
-        File extension: <strong>.{filename.split(".").pop()}</strong> — Detected content:{" "}
-        <strong>{FORMAT_LABEL[detected.contentFormat]}</strong>
-      </p>
-      <div className="mt-3 flex flex-wrap gap-2">
+    <div
+      role="status"
+      className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border-soft bg-[#FFF7EC] px-5 py-2.5 text-xs"
+    >
+      <span className="inline-flex items-center gap-1.5 font-semibold text-warning">
+        <AlertTriangle size={12} aria-hidden="true" />
+        FORMAT MISMATCH
+      </span>
+      <span className="text-secondary">
+        Extension <span className="font-mono text-foreground">.{filename.split(".").pop()}</span>
+      </span>
+      <span className="text-secondary">
+        Detected <span className="font-mono text-foreground">{FORMAT_LABEL[detected.contentFormat]}</span>
+      </span>
+      <div className="flex gap-2 sm:ml-auto">
         {detected.extensionFormat && (
           <button
             type="button"
             onClick={() => onPick(detected.extensionFormat as FileFormat)}
             disabled={currentSourceFormat === detected.extensionFormat}
-            className="focus-ring rounded-lg border border-accent bg-surface px-3 py-1.5 text-xs font-medium text-accent-hover disabled:opacity-50"
+            className="focus-ring rounded-md border border-warning/40 px-2.5 py-1 font-medium text-warning hover:bg-warning/10 disabled:opacity-50"
           >
-            Use extension: {FORMAT_LABEL[detected.extensionFormat]}
+            Use {FORMAT_LABEL[detected.extensionFormat]}
           </button>
         )}
         <button
           type="button"
           onClick={() => onPick(detected.contentFormat)}
           disabled={currentSourceFormat === detected.contentFormat}
-          className="focus-ring rounded-lg border border-accent bg-surface px-3 py-1.5 text-xs font-medium text-accent-hover disabled:opacity-50"
+          className="focus-ring rounded-md border border-warning/40 px-2.5 py-1 font-medium text-warning hover:bg-warning/10 disabled:opacity-50"
         >
-          Use detected: {FORMAT_LABEL[detected.contentFormat]}
+          Use {FORMAT_LABEL[detected.contentFormat]}
         </button>
       </div>
     </div>
   );
 }
 
+function PrivacyFooter() {
+  return (
+    <div className="flex items-center gap-1.5 border-t border-border-soft px-5 py-2.5 text-[11px] text-secondary">
+      <Lock size={11} aria-hidden="true" />
+      Processed locally in your browser. No file data is uploaded.
+    </div>
+  );
+}
+
 export function ConversionWorkspace() {
   const [state, setState] = useState<WorkspaceState>({ stage: "idle" });
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
 
   async function loadFile(file: File) {
     if (file.size > MAX_FILE_SIZE) {
@@ -177,6 +205,7 @@ export function ConversionWorkspace() {
       warnings: outcome.warnings,
       targetFormat: null,
       converting: false,
+      pulseKey: 0,
       result: null,
       editedContent: "",
       conversionError: null,
@@ -198,7 +227,7 @@ export function ConversionWorkspace() {
   async function handleConvert() {
     if (state.stage !== "ready" || !state.targetFormat) return;
     const targetFormat = state.targetFormat;
-    updateReady({ converting: true, conversionError: null });
+    updateReady({ converting: true, conversionError: null, pulseKey: state.pulseKey + 1 });
     await nextFrame();
 
     const outcome = convert(state.data, targetFormat, state.filename);
@@ -210,34 +239,49 @@ export function ConversionWorkspace() {
     updateReady({ converting: false, result: outcome, editedContent: outcome.content, conversionError: null });
   }
 
+  async function handleCopy() {
+    if (state.stage !== "ready") return;
+    try {
+      await navigator.clipboard.writeText(state.editedContent);
+      setCopyState("copied");
+    } catch {
+      setCopyState("failed");
+    }
+    setTimeout(() => setCopyState("idle"), 2000);
+  }
+
+  function handleDownload() {
+    if (state.stage !== "ready" || !state.result) return;
+    downloadTextFile(state.editedContent, state.result.filename, state.result.mimeType);
+  }
+
   function reset() {
     setState({ stage: "idle" });
+    setCopyState("idle");
   }
 
   return (
-    <div className="mx-auto w-full max-w-4xl">
+    <div className="mx-auto w-full overflow-hidden rounded-xl border border-border bg-surface">
       {state.stage === "idle" && (
-        <div>
+        <>
           <FileDropzone onFile={loadFile} />
-          <p className="mt-3 text-center text-xs text-secondary" aria-live="polite">
-            Drop a file to begin.
-          </p>
-        </div>
+          <PrivacyFooter />
+        </>
       )}
 
       {state.stage === "loading" && (
         <div
-          className="flex flex-col items-center justify-center gap-3 rounded-xl border border-border bg-surface px-6 py-14 text-center"
+          className="flex flex-col items-center justify-center gap-3 px-6 py-20 text-center"
           role="status"
           aria-live="polite"
         >
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent-soft border-t-accent" />
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-accent-soft border-t-accent" />
           <p className="text-sm font-medium text-secondary">{state.step}</p>
         </div>
       )}
 
       {state.stage === "error" && (
-        <div className="space-y-4">
+        <>
           {state.reinterpret && (
             <MismatchBanner
               filename={state.filename}
@@ -246,29 +290,50 @@ export function ConversionWorkspace() {
               onPick={reinterpret}
             />
           )}
-          <ErrorBanner error={state.error} />
-          <div className="flex justify-center">
-            <button
-              type="button"
-              onClick={reset}
-              className="focus-ring inline-flex items-center gap-1.5 rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:border-accent/50"
-            >
-              <RotateCcw size={14} /> Start over
-            </button>
-          </div>
-        </div>
+          <ErrorBlock error={state.error} onReset={reset} />
+        </>
       )}
 
       {state.stage === "ready" && (
-        <div className="space-y-5">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-secondary">Conversion workspace</h2>
+        <>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border-soft px-5 py-3">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+              <span className="max-w-[240px] truncate font-mono font-medium text-foreground" title={state.filename}>
+                {state.filename}
+              </span>
+              <span className="text-border">·</span>
+              <span className="text-secondary">{formatBytes(state.sizeBytes)}</span>
+              {state.summary.csv && (
+                <>
+                  <span className="text-border">·</span>
+                  <span className="text-secondary">
+                    {state.summary.csv.rows.toLocaleString("en-US")} rows
+                  </span>
+                  <span className="text-border">·</span>
+                  <span className="text-secondary">{state.summary.csv.columns} columns</span>
+                </>
+              )}
+              {state.summary.json && state.summary.json.recordCount !== null && (
+                <>
+                  <span className="text-border">·</span>
+                  <span className="text-secondary">
+                    {state.summary.json.recordCount.toLocaleString("en-US")} records
+                  </span>
+                </>
+              )}
+              {state.summary.text && (
+                <>
+                  <span className="text-border">·</span>
+                  <span className="text-secondary">{state.summary.text.lines.toLocaleString("en-US")} lines</span>
+                </>
+              )}
+            </div>
             <button
               type="button"
               onClick={reset}
-              className="focus-ring inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:border-accent/50"
+              className="focus-ring inline-flex shrink-0 items-center gap-1.5 text-xs font-medium text-secondary hover:text-foreground"
             >
-              <RotateCcw size={12} /> Start over
+              <RotateCcw size={12} /> Change file
             </button>
           </div>
 
@@ -281,8 +346,6 @@ export function ConversionWorkspace() {
             />
           )}
 
-          <FileSummaryCard summary={state.summary} />
-
           <WarningBanner messages={state.warnings} />
 
           <TransformControl
@@ -290,34 +353,63 @@ export function ConversionWorkspace() {
             target={state.targetFormat}
             validTargets={CONVERSION_MATRIX[state.sourceFormat]}
             onTargetChange={(format) => updateReady({ targetFormat: format, result: null, conversionError: null })}
-            onConvert={handleConvert}
-            converting={state.converting}
-            canConvert={state.targetFormat !== null}
+            pulseKey={state.pulseKey}
           />
 
-          {state.conversionError && <ErrorBanner error={state.conversionError} />}
-
-          <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-            <div>
-              <h3 className="mb-2 text-sm font-semibold text-foreground">Original</h3>
-              <OriginalPreview data={state.data} rawContent={state.rawContent} />
-            </div>
-            <div>
-              <h3 className="mb-2 text-sm font-semibold text-foreground">Converted</h3>
-              {state.result ? (
-                <ConvertedPreview
-                  result={state.result}
-                  content={state.editedContent}
-                  onContentChange={(value) => updateReady({ editedContent: value })}
-                />
-              ) : (
-                <div className="flex h-96 items-center justify-center rounded-lg border border-dashed border-border text-sm text-secondary">
-                  {state.targetFormat ? "Nothing to preview yet." : "Choose an output format."}
-                </div>
-              )}
-            </div>
+          <div className="grid grid-cols-1 divide-y divide-border-soft lg:grid-cols-2 lg:divide-x lg:divide-y-0">
+            <OriginalPreview data={state.data} rawContent={state.rawContent} />
+            <ConvertedPreview
+              targetFormat={state.targetFormat}
+              result={state.result}
+              conversionError={state.conversionError}
+              content={state.editedContent}
+              onContentChange={(value) => updateReady({ editedContent: value })}
+            />
           </div>
-        </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border-soft px-5 py-3">
+            {state.result ? (
+              <>
+                <span className="font-mono text-xs text-secondary">
+                  {resultSummaryLabel(state.data)} · {FORMAT_LABEL[state.sourceFormat]} → {FORMAT_LABEL[state.result.targetFormat]}
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleCopy}
+                    className="focus-ring inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:border-foreground/40"
+                  >
+                    {copyState === "copied" ? <Check size={13} className="text-success" /> : <Copy size={13} />}
+                    {copyState === "copied" ? "Copied" : copyState === "failed" ? "Copy failed" : "Copy"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDownload}
+                    className="focus-ring inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-hover"
+                  >
+                    <Download size={13} />
+                    Download .{state.result.filename.split(".").pop()}
+                  </button>
+                </div>
+              </>
+            ) : state.targetFormat ? (
+              <button
+                type="button"
+                onClick={handleConvert}
+                disabled={state.converting}
+                className="focus-ring mx-auto inline-flex items-center gap-2 rounded-md bg-accent px-6 py-2 font-mono text-sm font-semibold text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {state.converting
+                  ? "Converting…"
+                  : `Convert ${FORMAT_LABEL[state.sourceFormat]} → ${FORMAT_LABEL[state.targetFormat]}`}
+              </button>
+            ) : (
+              <span className="mx-auto text-xs text-secondary">Choose an output format above.</span>
+            )}
+          </div>
+
+          <PrivacyFooter />
+        </>
       )}
     </div>
   );

@@ -5,12 +5,12 @@ export function TextPreview({ content }: { content: string }) {
   const visible = truncated ? content.slice(0, PREVIEW_CHAR_LIMIT) : content;
 
   return (
-    <div>
-      <pre className="max-h-96 overflow-auto rounded-lg border border-border bg-background p-3 text-xs leading-relaxed font-mono whitespace-pre-wrap break-words text-foreground">
+    <div className="flex h-full flex-col">
+      <pre className="flex-1 overflow-auto bg-[#FAFAF8] p-4 font-mono text-[13px] leading-[1.6] whitespace-pre-wrap break-words text-foreground">
         {visible}
       </pre>
       {truncated && (
-        <p className="mt-2 text-xs text-secondary">
+        <p className="border-t border-border-soft px-4 py-1.5 text-[11px] text-secondary">
           Previewing first {PREVIEW_CHAR_LIMIT.toLocaleString("en-US")} of{" "}
           {content.length.toLocaleString("en-US")} characters
         </p>

@@ -19,8 +19,8 @@ export function FileDropzone({ onFile }: { onFile: (file: File) => void }) {
       role="button"
       tabIndex={0}
       aria-label="Drop a file to begin, or press Enter to browse files"
-      className={`focus-ring flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-6 py-14 text-center transition-colors cursor-pointer ${
-        dragging ? "border-accent bg-accent-soft" : "border-border bg-surface hover:border-accent/50"
+      className={`focus-ring flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed px-6 py-20 text-center transition-colors cursor-pointer ${
+        dragging ? "border-accent bg-accent-soft" : "border-border hover:border-foreground/30"
       }`}
       onClick={() => inputRef.current?.click()}
       onKeyDown={(e) => {
@@ -40,13 +40,13 @@ export function FileDropzone({ onFile }: { onFile: (file: File) => void }) {
         handleFiles(e.dataTransfer.files);
       }}
     >
-      <UploadCloud size={32} className={dragging ? "text-accent" : "text-secondary"} aria-hidden="true" />
+      <UploadCloud size={22} className={dragging ? "text-accent" : "text-secondary"} aria-hidden="true" />
       <div>
-        <p className="text-base font-semibold text-foreground">Drop a file</p>
-        <p className="mt-1 text-sm text-secondary">CSV · JSON · TXT · Markdown</p>
+        <p className="text-[15px] font-semibold text-foreground">Drop a file here</p>
+        <p className="mt-1 font-mono text-xs tracking-wide text-secondary">CSV / JSON / TXT / MARKDOWN</p>
       </div>
-      <span className="mt-1 inline-flex items-center rounded-lg border border-border bg-background px-3 py-1.5 text-sm font-medium text-foreground">
-        Browse files
+      <span className="mt-1 text-sm font-medium text-accent underline-offset-4 hover:underline">
+        or choose a file
       </span>
       <input
         ref={inputRef}
