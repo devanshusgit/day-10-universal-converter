@@ -1,0 +1,4 @@
+[
+  { "name": "Aisha", "age": 21, "city": "Mumbai", "tags": ["student", "developer"] },
+  { "name": "Rohan", "age": 22, "city": "Pune" }
+]
