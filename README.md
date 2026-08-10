@@ -127,8 +127,8 @@ npm run start
 Deployed on [Vercel](https://vercel.com/). No environment variables are required — there is
 no backend to configure.
 
-- **Live demo:** _(added after deployment)_
-- **GitHub:** _(added after push)_
+- **Live demo:** [universal-converter-app.vercel.app](https://universal-converter-app.vercel.app)
+- **GitHub:** [github.com/devanshusgit/day-10-universal-converter](https://github.com/devanshusgit/day-10-universal-converter)
 
 ## Known limitations
 
